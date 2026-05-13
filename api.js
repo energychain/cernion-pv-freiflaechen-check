@@ -119,6 +119,7 @@ const CERNION_CONFIG_KEY = 'cernion.api.config';
 class CernionAPI {
   constructor() {
     this.config = this.loadConfig();
+    this.config.baseUrl = (this.config.baseUrl || 'https://api.cernion.de/').replace(/\/api\/$/, '');
   }
 
   loadConfig() {
