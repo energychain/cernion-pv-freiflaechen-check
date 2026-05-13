@@ -176,16 +176,15 @@ class CernionAPI {
   // --- EDM ---
   async listMelos() {
     try {
-      return await this.get('/edm/melos');
+      return await this.get('api/edm/melos');
     } catch (e) {
-      console.warn('API failed, using demo data');
-      return { rows: DEMO_MELos };
+      console.warn('API unavailable, returning demo melos');
+      return this.demoMelos;
     }
   }
-
-  async getTimeseries(meloId, obis, from, to) {
+  async getTimeSeries(meloId, obis, from, to) {
     try {
-      return await this.get('/edm/timeseries/' + meloId + '?obis=' + obis + '&from=' + from + '&to=' + to);
+      return await this.get('api/edm/timeseries/' + meloId + '?obis=' + obis + '&from=' + from + '&to=' + to);
     } catch (e) {
       console.warn('API failed, using demo data');
       const values = DEMO_TIMESERIES[meloId] || [];
