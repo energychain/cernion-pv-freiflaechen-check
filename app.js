@@ -21,7 +21,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 function testConnection() {
   return new Promise(function(resolve) {
-    api.get('/openapi.json')
+    api.get('api/openapi.json')
       .then(function() { resolve(true); })
       .catch(function() { resolve(false); });
   });
