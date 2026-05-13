@@ -1,124 +1,152 @@
 /**
- * PV Freiflächen Express-Check
- * Echtzeit-Dashboard für Projektierer
+ * PV Freiflächen Express-Check — App Logic (ES5-compatible)
  */
 
-let chartInstances = {};
+var chartInstances = {};
+var isDemoMode = false;
 
-// Startup
-document.addEventListener('DOMContentLoaded', () => {
+// ===== Startup =====
+document.addEventListener('DOMContentLoaded', function() {
   initSettings();
-  loadDashboard();
   setupTabs();
+  testConnection().then(function(connected) {
+    if (!connected) {
+      isDemoMode = true;
+      var badge = document.getElementById('demo-badge');
+      if (badge) badge.style.display = 'block';
+    }
+    loadDashboard();
+  });
 });
 
+function testConnection() {
+  return new Promise(function(resolve) {
+    api.get('/openapi.json')
+      .then(function() { resolve(true); })
+      .catch(function() { resolve(false); });
+  });
+}
+
+function switchTab(tabId) {
+  document.querySelectorAll('nav[aria-label="breadcrumb"] button').forEach(function(btn) {
+    btn.classList.remove('active');
+    if (btn.dataset.tab === tabId) btn.classList.add('active');
+  });
+  document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+  var panel = document.getElementById(tabId);
+  if (panel) panel.classList.add('active');
+  if (tabId === 'dashboard') loadDashboard();
+  if (tabId === 'anlagen') loadAnlagen();
+  if (tabId === 'pruefung') initPruefung();
+  if (tabId === 'einstellungen') loadSettings();
+}
+
 function setupTabs() {
-  document.querySelectorAll('nav button').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const target = btn.dataset.tab;
-      document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-      document.getElementById(target).classList.add('active');
-      if (target === 'dashboard') loadDashboard();
-      if (target === 'anlagen') loadAnlagen();
-      if (target === 'pruefung') initPruefung();
-      if (target === 'einstellungen') loadSettings();
+  document.querySelectorAll('nav[aria-label="breadcrumb"] button').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      switchTab(btn.dataset.tab);
     });
   });
 }
 
-async function loadDashboard() {
+// ===== Dashboard =====
+function loadDashboard() {
   showLoading(true);
-  try {
-    const melos = await api.listMelos();
+  api.listMelos().then(function(melos) {
     renderDashboard(melos.rows || []);
-  } catch (e) {
-    showError(e.message);
-  } finally {
     showLoading(false);
-  }
+  }).catch(function(e) {
+    showError(e.message);
+    showLoading(false);
+  });
 }
 
 function renderDashboard(melos) {
-  const container = document.getElementById('dashboard-cards');
+  var container = document.getElementById('dashboard-cards');
+  if (!container) return;
   container.innerHTML = '';
 
-  // Get only generation melos (PV plants)
-  const pvMelos = melos.filter(m => 
-    m.meloId?.includes('pv') || 
-    m.metadata?.installationType?.includes('ground') ||
-    m.metadata?.installationType?.includes('roof')
-  );
+  var pvMelos = melos.filter(function(m) {
+    return (m.meloId && m.meloId.indexOf('pv') >= 0) ||
+           (m.metadata && (m.metadata.installationType === 'ground-mounted' || m.metadata.installationType === 'roof-mounted'));
+  });
 
-  const gridMelo = melos.find(m => m.meloId?.includes('anschluss'));
+  var gridMelo = melos.find(function(m) {
+    return m.meloId && m.meloId.indexOf('anschluss') >= 0;
+  });
 
-  // KPI cards
-  const totalCapacity = pvMelos.reduce((s, m) => s + (m.metadata?.capacityKw || 0), 0);
-  const avgCommissioning = pvMelos.length > 0 ? 
-    pvMelos.map(m => new Date(m.metadata?.commissioningDate).getFullYear()).reduce((a,b) => a+b,0) / pvMelos.length : 
-    null;
+  var totalCapacity = pvMelos.reduce(function(s, m) {
+    return s + (m.metadata && m.metadata.capacityKw ? m.metadata.capacityKw : 0);
+  }, 0);
 
-  const kpiHtml = `
-    <div class="grid kpi-grid">
-      <article class="kpi-card">
-        <h3>Gesamtleistung</h3>
-        <p class="kpi-value">${totalCapacity.toLocaleString('de-DE')} <span>kWp</span></p>
-        <small>${pvMelos.length} Anlagen</small>
-      </article>
-      <article class="kpi-card">
-        <h3>Standort</h3>
-        <p class="kpi-value">${pvMelos[0]?.metadata?.location || '—'}</p>
-        <small>PLZ ${pvMelos[0]?.metadata?.postleitzahl || '—'}</small>
-      </article>
-      <article class="kpi-card">
-        <h3>Netzanschluss</h3>
-        <p class="kpi-value">${gridMelo?.metadata?.connectionVoltage || '—'}</p>
-        <small>Kapazität ${(gridMelo?.metadata?.connectionCapacityKw/1000).toFixed(1)} MW</small>
-      </article>
-      <article class="kpi-card">
-        <h3>Ø Inbetriebnahme</h3>
-        <p class="kpi-value">${avgCommissioning ? Math.round(avgCommissioning) : '—'}</p>
-        <small>${pvMelos.length} Anlagen</small>
-      </article>
-    </div>
-  `;
+  var avgYear = null;
+  if (pvMelos.length > 0) {
+    var years = pvMelos.map(function(m) {
+      if (m.metadata && m.metadata.commissioningDate) {
+        return new Date(m.metadata.commissioningDate).getFullYear();
+      }
+      return 0;
+    }).filter(function(y) { return y > 0; });
+    if (years.length > 0) {
+      avgYear = Math.round(years.reduce(function(a, b) { return a + b; }, 0) / years.length);
+    }
+  }
 
-  // Load timeseries for PV plant #1
-  const tsContainer = document.createElement('div');
-  tsContainer.id = 'ts-chart-container';
-  tsContainer.innerHTML = `
-    <h2>Tagesverlauf: ${pvMelos[0]?.name || 'PV-Anlage'}</h2>
-    <canvas id="ts-chart"></canvas>
-  `;
+  var kpiHtml = '<div class="grid kpi-grid">' +
+    '<article class="kpi-card"><h3>Gesamtleistung</h3>' +
+    '<p class="kpi-value">' + totalCapacity.toLocaleString('de-DE') + ' <span>kWp</span></p>' +
+    '<small>' + pvMelos.length + ' Anlagen</small></article>' +
+    '<article class="kpi-card"><h3>Standort</h3>' +
+    '<p class="kpi-value">' + (pvMelos[0] && pvMelos[0].metadata ? pvMelos[0].metadata.location : '—') + '</p>' +
+    '<small>PLZ ' + (pvMelos[0] && pvMelos[0].metadata ? pvMelos[0].metadata.postleitzahl : '—') + '</small></article>' +
+    '<article class="kpi-card"><h3>Netzanschluss</h3>' +
+    '<p class="kpi-value">' + (gridMelo && gridMelo.metadata ? gridMelo.metadata.connectionVoltage : '—') + '</p>' +
+    '<small>Kapazität ' + (gridMelo && gridMelo.metadata ? (gridMelo.metadata.connectionCapacityKw / 1000).toFixed(1) : '—') + ' MW</small></article>' +
+    '<article class="kpi-card"><h3>Ø Inbetriebnahme</h3>' +
+    '<p class="kpi-value">' + (avgYear || '—') + '</p>' +
+    '<small>' + pvMelos.length + ' Anlagen</small></article>' +
+    '</div>';
 
   container.innerHTML = kpiHtml;
-  container.appendChild(tsContainer);
+
+  // Timeseries chart container
+  var tsDiv = document.createElement('div');
+  tsDiv.id = 'ts-chart-container';
+  tsDiv.innerHTML = '<h2>Tagesverlauf: ' + (pvMelos[0] ? pvMelos[0].name : 'PV-Anlage') + '</h2>' +
+    '<div style="height:350px;"><canvas id="ts-chart"></canvas></div>';
+  if (isDemoMode) {
+    tsDiv.innerHTML += '<p style="color:#888;font-size:0.85rem;"><small>ℹ️ Demo-Modus: Zeigt synthetische, aber physikalisch plausible Daten (Sinus-Verlauf mit Kapazitätsfaktor ~75%)</small></p>';
+  }
+  container.appendChild(tsDiv);
 
   if (pvMelos.length > 0) {
     loadTimeseriesChart(pvMelos[0].meloId, '1-0:2.7.0', 'ts-chart');
   }
 }
 
-async function loadTimeseriesChart(meloId, obis, canvasId) {
-  const date = new Date().toISOString().split('T')[0];
-  const from = `${date}T00:00:00Z`;
-  const to = `${date}T23:59:59Z`;
+function loadTimeseriesChart(meloId, obis, canvasId) {
+  var date = '2026-05-12';
+  var from = date + 'T00:00:00Z';
+  var to = date + 'T23:59:59Z';
 
-  try {
-    const data = await api.getTimeseries(meloId, obis, from, to);
+  api.getTimeseries(meloId, obis, from, to).then(function(data) {
     renderChart(canvasId, data);
-  } catch (e) {
+  }).catch(function(e) {
     console.error('Chart load failed:', e);
-  }
+  });
 }
 
 function renderChart(canvasId, apiData) {
-  const ctx = document.getElementById(canvasId)?.getContext('2d');
-  if (!ctx) return;
+  var canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  var ctx = canvas.getContext('2d');
 
-  const labels = apiData.values?.map(v => v.ts?.slice(11, 16)) || [];
-  const values = apiData.values?.map(v => v.value) || [];
+  var labels = (apiData.values || []).map(function(v) {
+    return v.ts ? v.ts.slice(11, 16) : '';
+  });
+  var values = (apiData.values || []).map(function(v) {
+    return v.value || 0;
+  });
 
   if (chartInstances[canvasId]) {
     chartInstances[canvasId].destroy();
@@ -127,7 +155,7 @@ function renderChart(canvasId, apiData) {
   chartInstances[canvasId] = new Chart(ctx, {
     type: 'line',
     data: {
-      labels,
+      labels: labels,
       datasets: [{
         label: 'Leistung (kW)',
         data: values,
@@ -146,125 +174,131 @@ function renderChart(canvasId, apiData) {
       plugins: {
         tooltip: {
           callbacks: {
-            label: (ctx) => `${ctx.parsed.y.toFixed(1)} kW`
+            label: function(ctx) { return ctx.parsed.y.toFixed(1) + ' kW'; }
           }
         },
         legend: { display: false }
       },
       scales: {
-        x: { 
+        x: {
           grid: { display: false },
           ticks: { maxTicksLimit: 8 }
         },
-        y: { 
+        y: {
           title: { display: true, text: 'kW' },
-          beginAtZero: true 
+          beginAtZero: true
         }
       }
     }
   });
 }
 
-async function loadAnlagen() {
+// ===== Anlagen =====
+function loadAnlagen() {
   showLoading(true);
-  try {
-    const melos = await api.listMelos();
+  api.listMelos().then(function(melos) {
     renderAnlagenTable(melos.rows || []);
-  } catch (e) {
-    showError(e.message);
-  } finally {
     showLoading(false);
-  }
+  }).catch(function(e) {
+    showError(e.message);
+    showLoading(false);
+  });
 }
 
 function renderAnlagenTable(melos) {
-  const tbody = document.querySelector('#anlagen-table tbody');
+  var tbody = document.querySelector('#anlagen-table tbody');
+  if (!tbody) return;
   tbody.innerHTML = '';
 
-  melos.filter(m => m.meloId?.includes('pv')).forEach(m => {
-    const md = m.metadata || {};
-    const row = document.createElement('tr');
-    row.innerHTML = `
-      <td><strong>${m.name}</strong><br><small>${m.meloId}</small></td>
-      <td>${(md.capacityKw/1000).toFixed(2)} MWp</td>
-      <td>${md.installationType === 'ground-mounted' ? 'Freifläche' : 'Dach'}</td>
-      <td>${md.commissioningDate || '—'}</td>
-      <td>${md.postleitzahl || '—'}</td>
-      <td><button class="outline" onclick="showAnlageDetail('${m.meloId}')">Details</button></td>
-    `;
+  melos.filter(function(m) {
+    return m.meloId && m.meloId.indexOf('pv') >= 0;
+  }).forEach(function(m) {
+    var md = m.metadata || {};
+    var row = document.createElement('tr');
+    row.innerHTML = '<td><strong>' + m.name + '</strong><br><small>' + m.meloId + '</small></td>' +
+      '<td>' + (md.capacityKw ? (md.capacityKw / 1000).toFixed(2) : '—') + ' MWp</td>' +
+      '<td>' + (md.installationType === 'ground-mounted' ? 'Freifläche' : (md.installationType === 'roof-mounted' ? 'Dach' : '—')) + '</td>' +
+      '<td>' + (md.commissioningDate || '—') + '</td>' +
+      '<td>' + (md.postleitzahl || '—') + '</td>' +
+      '<td><button class="outline" onclick="showAnlageDetail(\'' + m.meloId + '\')">Details</button></td>';
     tbody.appendChild(row);
   });
 }
 
-async function showAnlageDetail(meloId) {
-  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-  document.getElementById('anlagen').classList.add('active');
-  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
-
-  const date = '2026-05-12';
-  const data = await api.getTimeseries(meloId, '1-0:2.7.0', `${date}T00:00:00Z`, `${date}T23:59:59Z`);
-  
-  const detail = document.getElementById('anlage-detail');
-  detail.style.display = 'block';
-  detail.innerHTML = `
-    <h3>Detailansicht ${meloId}</h3>
-    <div style="height:300px;">
-      <canvas id="detail-chart"></canvas>
-    </div>
-  `;
-  renderChart('detail-chart', data);
+function showAnlageDetail(meloId) {
+  switchTab('anlagen');
+  var date = '2026-05-12';
+  api.getTimeseries(meloId, '1-0:2.7.0', date + 'T00:00:00Z', date + 'T23:59:59Z').then(function(data) {
+    var detail = document.getElementById('anlage-detail');
+    if (!detail) return;
+    detail.style.display = 'block';
+    detail.innerHTML = '<h3>Detailansicht ' + meloId + '</h3>' +
+      '<div style="height:300px;"><canvas id="detail-chart"></canvas></div>';
+    renderChart('detail-chart', data);
+  });
 }
 
+// ===== Prüfung =====
 function initPruefung() {
-  document.getElementById('pruefung-form').onsubmit = async (e) => {
+  var form = document.getElementById('pruefung-form');
+  if (!form || form._initialized) return;
+  form._initialized = true;
+
+  form.onsubmit = function(e) {
     e.preventDefault();
-    const location = document.getElementById('pruefung-ort').value;
-    const capacity = parseFloat(document.getElementById('pruefung-kw').value);
-    
+    var location = document.getElementById('pruefung-ort').value;
+    var capacity = parseFloat(document.getElementById('pruefung-kw').value);
+
     showLoading(true);
-    try {
-      const result = await api.validateConnection(location, capacity);
+    api.validateConnection(location, capacity).then(function(result) {
       renderPruefungResult(result);
-    } catch (err) {
-      showError(err.message);
-    } finally {
       showLoading(false);
-    }
+    }).catch(function(err) {
+      showError(err.message);
+      showLoading(false);
+    });
   };
 }
 
 function renderPruefungResult(result) {
-  const container = document.getElementById('pruefung-result');
+  var container = document.getElementById('pruefung-result');
+  if (!container) return;
   container.style.display = 'block';
-  
-  const status = result.overallGo ? 'go' : 'nogo';
-  const statusText = result.overallGo ? 'Netzanschluss prinzipiell möglich' : 'Prüfung erforderlich';
-  
-  container.innerHTML = `
-    <article class="pruefung-card ${status}">
-      <h3>${statusText}</h3>
-      <div class="score">Score: ${result.qualityScore || '—'}/100</div>
-      
-      <h4>Findings (${result.findings?.length || 0})</h4>
-      <ul>
-        ${(result.findings || []).map(f => `
-          <li class="finding-${f.severity}">
-            <strong>[${f.code}]</strong> ${f.message}
-            <br><small>${f.rule || ''}</small>
-          </li>
-        `).join('')}
-      </ul>
-      
-      ${result.metrics ? `
-        <h4>Metriken</h4>
-        <pre>${JSON.stringify(result.metrics, null, 2)}</pre>
-      ` : ''}
-    </article>
-  `;
+
+  var status = result.overallGo ? 'go' : 'nogo';
+  var statusText = result.overallGo ? 'Netzanschluss prinzipiell möglich' : 'Prüfung erforderlich';
+
+  var findingsHtml = (result.findings || []).map(function(f) {
+    var sevClass = 'finding-info';
+    if (f.severity === 'warning') sevClass = 'finding-warning';
+    if (f.severity === 'error') sevClass = 'finding-error';
+    return '<li class="' + sevClass + '">' +
+      '<strong>[' + f.code + ']</strong> ' + f.message +
+      '<br><small>' + (f.rule || '') + '</small>' +
+      '</li>';
+  }).join('');
+
+  var metricsHtml = '';
+  if (result.metrics) {
+    metricsHtml = '<h4>Metriken</h4><pre>' + JSON.stringify(result.metrics, null, 2) + '</pre>';
+  }
+
+  container.innerHTML = '<article class="pruefung-card ' + status + '">' +
+    '<h3>' + statusText + '</h3>' +
+    '<div class="score">Score: ' + (result.qualityScore || '—') + '/100</div>' +
+    '<h4>Findings (' + (result.findings ? result.findings.length : 0) + ')</h4>' +
+    '<ul>' + findingsHtml + '</ul>' +
+    metricsHtml +
+    '</article>';
 }
 
+// ===== Settings =====
 function initSettings() {
-  document.getElementById('settings-form').onsubmit = (e) => {
+  var form = document.getElementById('settings-form');
+  if (!form || form._initialized) return;
+  form._initialized = true;
+
+  form.onsubmit = function(e) {
     e.preventDefault();
     api.saveConfig({
       baseUrl: document.getElementById('cfg-url').value,
@@ -272,6 +306,15 @@ function initSettings() {
       token: document.getElementById('cfg-token').value
     });
     alert('Einstellungen gespeichert');
+    testConnection().then(function(connected) {
+      if (!connected) {
+        isDemoMode = true;
+        document.getElementById('demo-badge').style.display = 'block';
+      } else {
+        isDemoMode = false;
+        document.getElementById('demo-badge').style.display = 'none';
+      }
+    });
   };
 }
 
@@ -281,13 +324,16 @@ function loadSettings() {
   document.getElementById('cfg-token').value = api.config.token;
 }
 
+// ===== Utils =====
 function showLoading(show) {
-  document.getElementById('loading').style.display = show ? 'block' : 'none';
+  var el = document.getElementById('loading');
+  if (el) el.style.display = show ? 'block' : 'none';
 }
 
 function showError(msg) {
-  const el = document.getElementById('error');
+  var el = document.getElementById('error');
+  if (!el) return;
   el.textContent = msg;
   el.style.display = 'block';
-  setTimeout(() => el.style.display = 'none', 5000);
+  setTimeout(function() { el.style.display = 'none'; }, 5000);
 }

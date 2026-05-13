@@ -184,7 +184,26 @@ table tbody tr:hover {
 .finding-warning { color: #e8b339; }
 .finding-error { color: #d05050; }
 
-/* Loading */
+/* Demo Banner */
+.demo-banner {
+  background: linear-gradient(90deg, #2a2a0a 0%, #3a3a10 100%);
+  border-bottom: 1px solid #666620;
+  padding: 0.5rem 0;
+}
+
+.demo-banner article {
+  background: transparent !important;
+  color: #e8e8a0;
+  font-size: 0.85rem;
+  text-align: center;
+  margin: 0;
+  padding: 0.3rem 1rem;
+}
+
+.demo-banner a {
+  color: #e8b339;
+  text-decoration: underline;
+}
 .loading-overlay {
   text-align: center;
   padding: 3rem;
