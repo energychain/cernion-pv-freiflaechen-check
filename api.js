@@ -127,7 +127,7 @@ class CernionAPI {
       if (raw) return JSON.parse(raw);
     } catch (e) { console.warn('Config parse error', e); }
     return {
-      baseUrl: 'http://10.0.0.8:3900/api',
+      baseUrl: 'https://api.cernion.de/',
       tenantId: 'agentic-hackathon',
       token: ''
     };
