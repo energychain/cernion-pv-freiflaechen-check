@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="de" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PV Freiflächen Express-Check — Cernion a²mdm</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="container">
+    <nav>
+      <hgroup>
+        <h1>☀️ PV Freiflächen Express-Check</h1>
+        <p>Cernion agentisches Master-Data-Management für Projektierer</p>
+      </hgroup>
+    </nav>
+    <nav aria-label="breadcrumb">
+      <ul>
+        <li><button class="active" data-tab="dashboard">Dashboard</button></li>
+        <li><button data-tab="anlagen">Anlagen</button></li>
+        <li><button data-tab="pruefung">Schnellprüfung</button></li>
+        <li><button data-tab="einstellungen">Einstellungen</button></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main class="container">
+    <div id="loading" class="loading-overlay" style="display:none;">
+      <article aria-busy="true">Lade Daten von Cernion a²mdm…</article>
+    </div>
+    <div id="error" class="error-banner" role="alert" style="display:none;"></div>
+
+    <!-- Tab: Dashboard -->
+    <section id="dashboard" class="tab-panel active">
+      <h2>Portfolio-Übersicht</h2>
+      <p>Realzeit-Daten aus dem Cernion Energiedatenmanagement (EDM) für Tenant <code>agentic-hackathon</code>.</p>
+      <div id="dashboard-cards"></div>
+    </section>
+
+    <!-- Tab: Anlagen -->
+    <section id="anlagen" class="tab-panel">
+      <h2>Anlagenverzeichnis</h2>
+      <table id="anlagen-table" role="grid">
+        <thead>
+          <tr>
+            <th>Anlage</th>
+            <th>Leistung</th>
+            <th>Typ</th>
+            <th>Inbetriebnahme</th>
+            <th>PLZ</th>
+            <th>Aktion</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div id="anlage-detail" style="display:none; margin-top:1rem;"></div>
+    </section>
+
+    <!-- Tab: Schnellprüfung -->
+    <section id="pruefung" class="tab-panel">
+      <h2>Netzanschluss-Schnellprüfung</h2>
+      <p>Prüfen Sie anhand von Standort und geplanter Leistung, ob ein Netzanschluss grundsätzlich möglich ist.</p>
+      
+      <form id="pruefung-form">
+        <label>
+          Standort / PLZ
+          <input type="text" id="pruefung-ort" placeholder="z. B. 68766 Hockenheim" required>
+          <small>PLZ oder Ortsname, an dem die PV-Anlage angeschlossen werden soll</small>
+        </label>
+        <label>
+          Geplante Anlagenleistung (kWp)
+          <input type="number" id="pruefung-kw" placeholder="8200" min="1" step="1" required>
+          <small>AC-Leistung der geplanten PV-Anlage in Kilowatt-peak</small>
+        </label>
+        <button type="submit">Anschluss prüfen</button>
+      </form>
+      
+      <div id="pruefung-result" style="display:none; margin-top:1.5rem;"></div>
+    </section>
+
+    <!-- Tab: Einstellungen -->
+    <section id="einstellungen" class="tab-panel">
+      <h2>API-Konfiguration</h2>
+      <p>Stellen Sie die Verbindung zur Cernion Dev-API oder Produktiv-API ein.</p>
+      
+      <form id="settings-form">
+        <label>
+          API-Basis-URL
+          <input type="url" id="cfg-url" value="http://10.0.0.8:3900/api" required>
+          <small>Standard: Dev-API intern. Für Produktion: https://api.cernion.de/api</small>
+        </label>
+        <label>
+          Tenant-ID
+          <input type="text" id="cfg-tenant" value="agentic-hackathon" required>
+          <small>Isoliert Daten innerhalb der Cernion-Instanz</small>
+        </label>
+        <label>
+          API-Token (optional)
+          <input type="password" id="cfg-token" placeholder="Bearer-Token">
+          <small>Nur erforderlich bei geschützten Endpunkten</small>
+        </label>
+        <button type="submit">Speichern</button>
+      </form>
+    </section>
+  </main>
+
+  <footer class="container">
+    <hr>
+    <p><small>
+      Powered by <a href="https://github.com/energychain/cernion-energy-tools">Cernion a²mdm</a> 
+      · Agentic-Hackathon Lauf #1 · STROMDAO GmbH
+    </small></p>
+  </footer>
+
+  <script src="api.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
