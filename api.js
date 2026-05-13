@@ -207,7 +207,7 @@ class CernionAPI {
   // --- Grid Connection ---
   async validateConnection(location, capacityKw) {
     try {
-      return await this.post('/grid-connection/validate', {
+      return await this.post('api/grid-connection/validate', {
         location: location,
         installedCapacityKw: capacityKw
       });
@@ -232,7 +232,7 @@ class CernionAPI {
   // --- Forecast ---
   async forecastGeneration(postleitzahl, date, capacityKw) {
     try {
-      return await this.post('/forecast/generation', {
+      return await this.post('api/forecast/generation', {
         postleitzahl: postleitzahl,
         date: date,
         installationType: 'solar',
