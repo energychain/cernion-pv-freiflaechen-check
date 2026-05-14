@@ -180,10 +180,10 @@ class CernionAPI {
       return await this.get('api/edm/melos');
     } catch (e) {
       console.warn('API unavailable, returning demo melos');
-      return this.demoMelos;
+      return { rows: DEMO_MELos };
     }
   }
-  async getTimeSeries(meloId, obis, from, to) {
+  async getTimeseries(meloId, obis, from, to) {
     try {
       return await this.get('api/edm/timeseries/' + meloId + '?obis=' + obis + '&from=' + from + '&to=' + to);
     } catch (e) {
