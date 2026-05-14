@@ -177,10 +177,15 @@ class CernionAPI {
   // --- EDM ---
   async listMelos() {
     try {
-      return await this.get('api/edm/melos');
+      const result = await this.get('api/edm/melos');
+      if (!result.data || result.data.length === 0) {
+        console.warn('API returned empty tenant, using demo data');
+        return { data: DEMO_MELos };
+      }
+      return result;
     } catch (e) {
-      console.warn('API unavailable, returning demo melos');
-      return { rows: DEMO_MELos };
+      console.warn('API unavailable, using demo data');
+      return { data: DEMO_MELos };
     }
   }
   async getTimeseries(meloId, obis, from, to) {
