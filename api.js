@@ -210,13 +210,37 @@ class CernionAPI {
     }
   }
 
+  // --- Job Polling ---
+  async pollJobResult(jobId, maxAttempts) {
+    maxAttempts = maxAttempts || 10;
+    var delay = 1500;
+    for (var attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        var statusRes = await this.get('api/jobs/' + jobId + '/status');
+        if (statusRes.status === 'completed' || statusRes.status === 'done') {
+          return await this.get('api/jobs/' + jobId + '/result');
+        }
+      } catch (e) {
+        // ignore polling errors, continue
+      }
+      await new Promise(function(resolve) { setTimeout(resolve, delay); });
+      delay = Math.min(delay * 1.5, 8000);
+    }
+    throw new Error('Job polling timeout after ' + maxAttempts + ' attempts');
+  }
+
   // --- Grid Connection ---
   async validateConnection(location, capacityKw) {
     try {
-      return await this.post('api/grid-connection/validate', {
+      var response = await this.post('api/grid-connection/validate', {
         location: location,
         installedCapacityKw: capacityKw
       });
+      // Async job pattern: if jobId returned, poll for result
+      if (response.jobId) {
+        return await this.pollJobResult(response.jobId);
+      }
+      return response;
     } catch (e) {
       console.warn('API failed, using demo data');
       const go = capacityKw <= 15000;
