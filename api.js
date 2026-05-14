@@ -57,22 +57,49 @@ const DEMO_MELos = [
   }
 ];
 
-function generatePVData(capacityKw, date) {
+function generatePVData(capacityKw, date, azimuthDeg, tiltDeg, shadingFactor, cloudiness) {
+  // azimuthDeg: 0=South, -90=East, +90=West
+  // tiltDeg: 0=horizontal, 90=vertical
+  // shadingFactor: 0-1 (1=no shading)
+  // cloudiness: 0-1 (0=clear sky, 1=overcast)
   const data = [];
+  const sunrise = 5.0 + (cloudiness * 0.5);   // later sunrise when cloudy
+  const sunset = 21.5 - (cloudiness * 0.5);   // earlier sunset when cloudy
+  const peakHour = 13.0 + (azimuthDeg / 90.0) * 2.0; // peak shifts with orientation
+  const dayLength = sunset - sunrise;
+  
   for (let i = 0; i < 96; i++) {
     const hour = i / 4.0;
     const h = String(Math.floor(hour)).padStart(2, '0');
     const m = String((i % 4) * 15).padStart(2, '0');
     const timestamp = date + "T" + h + ":" + m + ":00Z";
     let power = 0;
-    if (hour >= 5.5 && hour <= 21.5) {
-      const dayPos = (hour - 5.5) / 16.0;
-      const envelope = Math.sin(dayPos * Math.PI);
-      const pf = 0.75 + 0.05 * Math.sin((dayPos - 0.5) * Math.PI * 2);
-      power = capacityKw * pf * envelope;
+    
+    if (hour >= sunrise && hour <= sunset) {
+      // Time-shifted envelope based on azimuth
+      const timeShift = (hour - peakHour) / (dayLength * 0.5);
+      const envelope = Math.max(0, Math.cos(timeShift * Math.PI * 0.7));
+      
+      // Tilt efficiency: optimal ~30-35 deg, worse at 0 or 90
+      const tiltEff = 1.0 - Math.abs(tiltDeg - 32) / 100;
+      
+      // Shading: reduces morning/evening based on orientation
+      let shading = shadingFactor;
+      if (azimuthDeg < -30 && hour < 10) shading *= 0.7; // east-facing, morning shade
+      if (azimuthDeg > 30 && hour > 16) shading *= 0.7;  // west-facing, evening shade
+      
+      // Cloudiness reduces peak and flattens curve
+      const cloudReduction = 1.0 - cloudiness * 0.4;
+      
+      // Capacity factor varies by weather
+      const capacityFactor = (0.72 + 0.08 * Math.sin((hour - sunrise) / dayLength * Math.PI)) * cloudReduction;
+      
+      power = capacityKw * capacityFactor * envelope * tiltEff * shading;
+      
+      // Add realistic noise
       let hash = 0;
       for (let j = 0; j < timestamp.length; j++) hash = ((hash << 5) - hash) + timestamp.charCodeAt(j);
-      const noise = ((Math.abs(hash) % 100) - 50) / 5000;
+      const noise = ((Math.abs(hash) % 100) - 50) / 3000;
       power *= (1 + noise);
     }
     data.push({ ts: timestamp, value: Math.max(0, Math.round(power * 100) / 100) });
@@ -107,9 +134,13 @@ function generateConsumptionData(date) {
 }
 
 const DEMO_TIMESERIES = {
-  "melo-pv-freiflaeche-01": generatePVData(8200, "2026-05-12"),
-  "melo-pv-dach-02": generatePVData(450, "2026-05-12"),
-  "melo-pv-freiflaeche-03": generatePVData(5000, "2026-05-12"),
+  // 8.2 MWp Süd-Südwest, optimal geneigt, klarer Tag
+  "melo-pv-freiflaeche-01": generatePVData(8200, "2026-05-12", 15, 30, 0.95, 0.1),
+  // 450 kWp Südost-Dach, mittlere Verschattung am Morgen, leicht bewölkt
+  "melo-pv-dach-02": generatePVData(450, "2026-05-12", -45, 40, 0.75, 0.3),
+  // 5 MWp Südwest-Freifläche, Nachmittagsverschattung, bewölkter
+  "melo-pv-freiflaeche-03": generatePVData(5000, "2026-05-12", 35, 25, 0.80, 0.45),
+  // Industrie-Verbrauch (bleibt)
   "melo-anschluss-hv": generateConsumptionData("2026-05-12")
 };
 
@@ -192,7 +223,7 @@ class CernionAPI {
     try {
       return await this.get('api/edm/timeseries/' + meloId + '?obis=' + obis + '&from=' + from + '&to=' + to);
     } catch (e) {
-      console.warn('API failed, using demo data');
+      // Silent fallback — expected when tenant has no timeseries data
       const values = DEMO_TIMESERIES[meloId] || [];
       const totalKwh = values.reduce(function(s, v) { return s + v.value / 4; }, 0);
       const vals = values.map(function(v) { return v.value; });
