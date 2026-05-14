@@ -53,7 +53,7 @@ function setupTabs() {
 function loadDashboard() {
   showLoading(true);
   api.listMelos().then(function(melos) {
-    renderDashboard(melos.rows || []);
+    renderDashboard(melos.data || melos.rows || []);
     showLoading(false);
   }).catch(function(e) {
     showError(e.message);
@@ -197,7 +197,7 @@ function renderChart(canvasId, apiData) {
 function loadAnlagen() {
   showLoading(true);
   api.listMelos().then(function(melos) {
-    renderAnlagenTable(melos.rows || []);
+    renderAnlagenTable(melos.data || melos.rows || []);
     showLoading(false);
   }).catch(function(e) {
     showError(e.message);
